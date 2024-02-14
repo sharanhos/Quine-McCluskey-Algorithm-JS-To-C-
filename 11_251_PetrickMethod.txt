@@ -1,0 +1,268 @@
+using System;
+using System.Collections.Generic;
+
+public class PetrickMethod
+{
+    private List<List<Dictionary<int, int>>> problem;
+    private int maxProblemSize = 100;
+    private List<List<Dictionary<int, int>>> solution;
+    private string log = "";
+
+    public void Test()
+    {
+        var andArray = new List<List<Dictionary<int, int>>>();
+        List<Dictionary<int, int>> orArray;
+        Dictionary<int, int> monomA;
+        Dictionary<int, int> monomB;
+        orArray = new List<Dictionary<int, int>>();
+        monomA = new Dictionary<int, int>(); // using objects ensures that (x and x) = x
+        monomA[1] = 1;
+        orArray.Add(monomA);
+        monomB = new Dictionary<int, int>();
+        monomB[2] = 2;
+        orArray.Add(monomB);
+        andArray.Add(orArray);
+        orArray = new List<Dictionary<int, int>>();
+        monomA = new Dictionary<int, int>();
+        monomA[3] = 3;
+        orArray.Add(monomA);
+        monomB = new Dictionary<int, int>();
+        monomB[4] = 4;
+        orArray.Add(monomB);
+        andArray.Add(orArray);
+        orArray = new List<Dictionary<int, int>>();
+        monomA = new Dictionary<int, int>();
+        monomA[1] = 1;
+        orArray.Add(monomA);
+        monomB = new Dictionary<int, int>();
+        monomB[3] = 3;
+        orArray.Add(monomB);
+        andArray.Add(orArray);
+        orArray = new List<Dictionary<int, int>>();
+        monomA = new Dictionary<int, int>();
+        monomA[5] = 5;
+        orArray.Add(monomA);
+        monomB = new Dictionary<int, int>();
+        monomB[6] = 6;
+        orArray.Add(monomB);
+        andArray.Add(orArray);
+        orArray = new List<Dictionary<int, int>>();
+        monomA = new Dictionary<int, int>();
+        monomA[2] = 2;
+        orArray.Add(monomA);
+        monomB = new Dictionary<int, int>();
+        monomB[5] = 5;
+        orArray.Add(monomB);
+        andArray.Add(orArray);
+        orArray = new List<Dictionary<int, int>>();
+        monomA = new Dictionary<int, int>();
+        monomA[4] = 4;
+        orArray.Add(monomA);
+        monomB = new Dictionary<int, int>();
+        monomB[6] = 6;
+        orArray.Add(monomB);
+        andArray.Add(orArray);
+        /*orArray = new List<Dictionary<int, int>>();
+        monomA = new Dictionary<int, int>();
+        monomA[4] = 4;
+        orArray.Add(monomA);
+        monomB = new Dictionary<int, int>();
+        monomB[4] = 4;
+        orArray.Add(monomB);
+        andArray.Add(orArray);*/
+        Solve(andArray);
+    }
+
+    public bool Solve(List<List<Dictionary<int, int>>> eq)
+    {
+        problem = eq;
+        log = "";
+        //printEqnArray(eq);
+        PrintEqnArrayFancy(eq);
+        // multiply out
+        var andArray = eq;
+        var loopCounter = 0;
+        while (andArray.Count > 1)
+        {
+            var newAndArray = new List<List<Dictionary<int, int>>>();
+            for (var i = 1; i < andArray.Count; i += 2)
+            {
+                var orTermA = andArray[i - 1];
+                var orTermB = andArray[i];
+                var newOrArray = new List<Dictionary<int, int>>();
+                for (var a = 0; a < orTermA.Count; a++)
+                {
+                    for (var b = 0; b < orTermB.Count; b++)
+                    {
+                        var monom1 = orTermA[a];
+                        var monom2 = orTermB[b];
+                        var resultingMonom = new Dictionary<int, int>();
+                        foreach (var m in monom1)
+                        {
+                            resultingMonom[m.Key] = m.Value;
+                        }
+                        foreach (var n in monom2)
+                        {
+                            resultingMonom[n.Key] = n.Value;
+                        }
+                        newOrArray.Add(resultingMonom);
+                    }
+                }
+                newAndArray.Add(newOrArray);
+            }
+            // if uneven copy last and-term
+            if (andArray.Count % 2 == 1)
+            {
+                newAndArray.Add(andArray[andArray.Count - 1]);
+            }
+            //printEqnArray(newAndArray);
+            PrintEqnArrayFancy(newAndArray);
+            andArray.Clear();
+            // simplify or-term
+            for (var i = 0; i < newAndArray.Count; i++)
+            {
+                var orTerm = newAndArray[i];
+                var newOrTerm = SimplifyOrTerm(orTerm);
+                if (newOrTerm.Count > 0)
+                {
+                    andArray.Add(newOrTerm);
+                }
+            }
+            var problemSize = EqnArrayProblemSize(andArray);
+            if (problemSize > maxProblemSize)
+            {
+                Console.WriteLine("Error: The cyclic covering problem is too large to be solved with Petrick's method (increase maxProblemSize). Size=" + problemSize);
+                return false;
+            }
+            //printEqnArray(andArray);
+            PrintEqnArrayFancy(andArray);
+            loopCounter++;
+        }
+        solution = andArray;
+        return true;
+    }
+
+    private List<Dictionary<int, int>> SimplifyOrTerm(List<Dictionary<int, int>> orTerm)
+    {
+        // find a monom that is the same or simpler than another one
+        var newOrTerm = new List<Dictionary<int, int>>();
+        var markedForDeletion = new Dictionary<int, int>();
+        for (var a = 0; a < orTerm.Count; a++)
+        {
+            var keepA = true;
+            var monomA = orTerm[a];
+            for (var b = a + 1; b < orTerm.Count && keepA; b++)
+            {
+                var monomB = orTerm[b];
+                var overlapBoverA = 0;
+                var lengthA = 0;
+                foreach (var m in monomA)
+                {
+                    if (monomB.ContainsKey(m.Key))
+                    {
+                        overlapBoverA++;
+                    }
+                    lengthA++;
+                }
+                var overlapAoverB = 0;
+                var lengthB = 0;
+                foreach (var m in monomB)
+                {
+                    if (monomA.ContainsKey(m.Key))
+                    {
+                        overlapAoverB++;
+                    }
+                    lengthB++;
+                }
+                if (overlapBoverA == lengthB)
+                {
+                    keepA = false;
+                }
+                if (lengthA < lengthB && overlapAoverB == lengthA)
+                {
+                    markedForDeletion[b] = b;
+                }
+            }
+            if (keepA)
+            {
+                if (!markedForDeletion.ContainsKey(a))
+                {
+                    newOrTerm.Add(orTerm[a]);
+                }
+            }
+        }
+        return newOrTerm;
+    }
+
+    private void PrintEqnArrayFancy(List<List<Dictionary<int, int>>> andArray)
+    {
+        var str = "";
+        for (var i = 0; i < andArray.Count; i++)
+        {
+            var first = true;
+            str += "(";
+            var orArray = andArray[i];
+            for (var j = 0; j < orArray.Count; j++)
+            {
+                if (!first)
+                {
+                    str += " ∨ ";
+                }
+                var monom = orArray[j];
+                foreach (var k in monom)
+                {
+                    str += "<i>p</i><sub><small>" + k.Value + "</small></sub>";
+                }
+                first = false;
+            }
+            str += ")";
+        }
+        if (log.Length > 0)
+        {
+            log += "<p>⇔&nbsp;" + str + "</p>";
+        }
+        else
+        {
+            log += "<p>" + str + "</p>";
+        }
+    }
+
+    private int EqnArrayProblemSize(List<List<Dictionary<int, int>>> andArray)
+    {
+        var monomCounter = 0;
+        for (var i = 0; i < andArray.Count; i++)
+        {
+            var orArray = andArray[i];
+            monomCounter += orArray.Count;
+        }
+        return monomCounter;
+    }
+
+    private void PrintEqnArray(List<List<Dictionary<int, int>>> andArray)
+    {
+        var str = "";
+        for (var i = 0; i < andArray.Count; i++)
+        {
+            var first = true;
+            str += "(";
+            var orArray = andArray[i];
+            for (var j = 0; j < orArray.Count; j++)
+            {
+                if (!first)
+                {
+                    str += " or ";
+                }
+                var monom = orArray[j];
+                foreach (var k in monom)
+                {
+                    str += k.Value;
+                }
+                first = false;
+            }
+            str += ")";
+        }
+        Console.WriteLine(str);
+    }
+}
+
+

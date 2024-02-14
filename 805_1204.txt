@@ -1,0 +1,431 @@
+using System;
+
+public class QuineMcCluskey
+{
+    private int myDiv = -1;
+    private string divId;
+    private int cols;
+    private int rows;
+    private QuineMcCluskeyDataCtrl data;
+    private static Dictionary<int, string> labels;
+
+    public QuineMcCluskey(string parentDivId, int columns, int language)
+    {
+        divId = parentDivId;
+        cols = columns + 1;
+        rows = (int)Math.Pow(2, columns);
+        data = new QuineMcCluskeyDataCtrl();
+        if (language == 0)
+        {
+            labels = new Dictionary<int, string>
+            {
+                {0, "Truth table"},
+                {1, "Minimal boolean expression"},
+                {2, "Implicants"},
+                {3, "Order"},
+                {4, "Prime implicant chart"},
+                {5, "Reduced prime implicant chart (Iteration"},
+                {6, "Extracted essential prime implicants"},
+                {7, "Extracted prime implicants"},
+                {8, "Petrick's method"}
+            };
+        }
+        else
+        {
+            labels = new Dictionary<int, string>
+            {
+                {0, "Wahrheitstafel"},
+                {1, "Minimaler boolescher Ausdruck"},
+                {2, "Implikanten"},
+                {3, "Ordnung"},
+                {4, "Primimplikantentafel"},
+                {5, "Reduzierte Primimplikantentafel (Iteration"},
+                {6, "Extrahierte essentielle Primimplikanten"},
+                {7, "Extrahierte Primimplikanten"},
+                {8, "Verfahren von Petrick"}
+            };
+        }
+    }
+
+    public void Init()
+    {
+        data.Init(cols);
+        myDiv = -1;
+        var myDiv = new HtmlGenericControl("div");
+        if (myDiv == null)
+        {
+            Console.WriteLine("QuineMcCluskey error: can not create a canvas element");
+            myDiv = -1;
+        }
+        else
+        {
+            var parent = document.getElementById(divId);
+            if (parent == null)
+            {
+                if (divId != "fakeDivId")
+                {
+                    Console.WriteLine("QuineMcCluskey error: can not find an element with the given name: " + divId);
+                }
+                myDiv = -1;
+            }
+            else
+            {
+                document.body.appendChild(myDiv);
+                parent.appendChild(myDiv);
+            }
+        }
+        Update();
+    }
+
+    public void SetNoOfVars(int vars)
+    {
+        var c = int.Parse(vars);
+        if (c < 1 && c > 6)
+            return;
+        cols = c + 1;
+        rows = (int)Math.Pow(2, c);
+        data.Init(c);
+        Update();
+    }
+
+    public void GenRandom()
+    {
+        data.Random();
+        Update();
+    }
+
+    public void AllowDontCares(int type)
+    {
+        if (type > 0)
+        {
+            data.AllowDontCare = true;
+        }
+        else
+        {
+            data.AllowDontCare = false;
+        }
+        data.Clear();
+        Update();
+    }
+
+    public void DrawImplicantGroup(Group g, HtmlGenericControl parent, bool primFlag, int t, bool drawPetrickVars)
+    {
+        var primTermTable = data.PrimTermTables[t];
+        var myTable = new HtmlGenericControl("table");
+        myTable.Attributes["class"] = "qmcTableClass";
+        var myRow = new HtmlGenericControl("tr");
+        var cell1h = new HtmlGenericControl("td");
+        cell1h.Attributes["class"] = "qmcTdNoBorder";
+        cell1h.InnerHtml = "";
+        myRow.Controls.Add(cell1h);
+        for (var j = 0; j < data.NoOfVars; j++)
+        {
+            var myCell = new HtmlGenericControl("th");
+            myCell.InnerHtml = "<i>x</i><sub><small>" + (data.NoOfVars - 1 - j) + "</small></sub>";
+            myCell.Attributes["class"] = "qmcHeaderX qmcBit";
+            myRow.Controls.Add(myCell);
+        }
+        if (primFlag)
+        {
+            for (var i = 0; i < primTermTable.RemainingVars.Length; i++)
+            {
+                var cellImph = new HtmlGenericControl("td");
+                cellImph.Attributes["class"] = "qmcTdNoBorder";
+                cellImph.InnerHtml = primTermTable.RemainingVars[i].ToString(10);
+                myRow.Controls.Add(cellImph);
+            }
+        }
+        var cellImph = new HtmlGenericControl("td");
+        cellImph.Attributes["class"] = "qmcTdNoBorder";
+        cellImph.InnerHtml = "";
+        myRow.Controls.Add(cellImph);
+        myTable.Controls.Add(myRow);
+        var iMax = 0;
+        if (!primFlag) iMax = g.Group.Length; else iMax = primTermTable.RemainingPrimTerms.Length;
+        for (var i = 0; i < iMax; i++)
+        {
+            var impl = -1;
+            if (!primFlag) impl = g.Group[i]; else impl = primTermTable.RemainingPrimTerms[i].Implicant;
+            var bits = 0;
+            var mask = impl.BitMask;
+            foreach (var m in impl.Imp)
+            {
+                bits = impl.Imp[m];
+                break;
+            }
+            myRow = new HtmlGenericControl("tr");
+            var cell1 = new HtmlGenericControl("td");
+            var cell1Str = "";
+            var first = true;
+            foreach (var m in impl.Imp)
+            {
+                if (!first) cell1Str += ", ";
+                cell1Str += impl.Imp[m].ToString(10);
+                first = false;
+            }
+            cell1.InnerHtml = cell1Str + ":";
+            cell1.Attributes["class"] = "qmcTdNoBorder";
+            myRow.Controls.Add(cell1);
+            var res = bits.ToString(2);
+            for (var j = 0; j < data.NoOfVars; j++)
+            {
+                var myCell = new HtmlGenericControl("td");
+                myCell.Attributes["class"] = "qmcBit";
+                var str = "";
+                var currentBit = (int)Math.Pow(2, (data.NoOfVars - 1) - j);
+                if ((currentBit & mask) == currentBit)
+                {
+                    str = "-";
+                    myCell.InnerHtml = str;
+                }
+                else
+                {
+                    if (j >= (data.NoOfVars) - res.Length)
+                    {
+                        str = res[j - (data.NoOfVars - res.Length)].ToString();
+                        myCell.InnerHtml = str;
+                    }
+                    else
+                    {
+                        str = "0";
+                        myCell.InnerHtml = str;
+                    }
+                }
+                myRow.Controls.Add(myCell);
+            }
+            if (!primFlag)
+            {
+                var cellLast = new HtmlGenericControl("td");
+                cellLast.Attributes["class"] = "qmcTdNoBorder";
+                if (impl.IsPrim)
+                {
+                    cellLast.InnerHtml = "&#x2713;";
+                    if (impl.IsOnlyDontCare)
+                    {
+                        cellLast.InnerHtml = " (&times;)";
+                    }
+                }
+                else
+                {
+                    cellLast.InnerHtml = "&rarr;";
+                }
+                myRow.Controls.Add(cellLast);
+            }
+            else
+            {
+                for (var v = 0; v < primTermTable.RemainingVars.Length; v++)
+                {
+                    var ii = primTermTable.RemainingVars[v];
+                    var cellUsed = new HtmlGenericControl("td");
+                    cellUsed.Attributes["class"] = "qmcPrimItem qmcBit";
+                    if (impl.Imp.ContainsKey(ii))
+                    {
+                        cellUsed.InnerHtml = "&#9675;";
+                        if (primTermTable.RemainingPrimTerms[i].NeededByVar.ContainsKey(ii))
+                        {
+                            if (primTermTable.RemainingPrimTerms[i].NeededByVar[ii] == t)
+                            {
+                                cellUsed.InnerHtml = "<span style='color:green;'>&#9679;</span>";
+                            }
+                        }
+                    }
+                    myRow.Controls.Add(cellUsed);
+                }
+                var cellLast = new HtmlGenericControl("td");
+                cellLast.Attributes["class"] = "qmcTdNoBorder";
+                cellLast.InnerHtml = primTermTable.RemainingPrimTerms[i].ColoredTermString;
+                if (drawPetrickVars)
+                {
+                    var pVars = "&nbsp;&equiv;&nbsp;<i>p</i><sub><small>" + i + "</small></sub>";
+                    cellLast.InnerHtml += pVars;
+                }
+                myRow.Controls.Add(cellLast);
+            }
+            myTable.Controls.Add(myRow);
+        }
+        parent.Controls.Add(myTable);
+    }
+
+    public void Update()
+    {
+        if (myDiv == -1) return;
+        var oldInnerDiv = document.getElementById(divId + "_innerDiv");
+        if (oldInnerDiv != null) myDiv.RemoveChild(oldInnerDiv);
+        var myInnerDiv = new HtmlGenericControl("div");
+        myInnerDiv.Attributes["id"] = divId + "_innerDiv";
+        var myTruthTableDiv = new HtmlGenericControl("div");
+        myTruthTableDiv.InnerHtml = "<div>" + labels[0] + ":</div>";
+        myTruthTableDiv.Attributes["class"] = "qmcTableLabelDiv";
+        var myTable = new HtmlGenericControl("table");
+        myTable.Attributes["class"] = "qmcTableClass";
+        var myRow = new HtmlGenericControl("tr");
+        var cell1h = new HtmlGenericControl("td");
+        cell1h.InnerHtml = "";
+        cell1h.Attributes["class"] = "qmcTdNoBorder";
+        myRow.Controls.Add(cell1h);
+        for (var j = 0; j < cols; j++)
+        {
+            var myCell = new HtmlGenericControl("th");
+            if (j < cols - 1)
+            {
+                myCell.InnerHtml = "<i>x</i><sub><small>" + (cols - 2 - j) + "</small></sub>";
+                myCell.Attributes["class"] = "qmcHeaderX qmcBit";
+            }
+            else
+            {
+                myCell.InnerHtml = "<i>y</i>";
+                myCell.Attributes["class"] = "qmcHeaderY qmcBit";
+            }
+            myRow.Controls.Add(myCell);
+        }
+        myTable.Controls.Add(myRow);
+        for (var i = 0; i < rows; i++)
+        {
+            myRow = new HtmlGenericControl("tr");
+            var cell1 = new HtmlGenericControl("td");
+            cell1.InnerHtml = i.ToString(10) + ":";
+            cell1.Attributes["class"] = "qmcTdNoBorder";
+            myRow.Controls.Add(cell1);
+            var res = i.ToString(2);
+            for (var j = 0; j < cols; j++)
+            {
+                var myCell = new HtmlGenericControl("td");
+                if (j < cols - 1)
+                {
+                    myCell.Attributes["class"] = "qmcBit";
+                    var str = "";
+                    if (j >= (cols - 1) - res.Length)
+                    {
+                        str = res[j - ((cols - 1) - res.Length)].ToString();
+                        myCell.InnerHtml = str;
+                    }
+                    else
+                    {
+                        str = "0";
+                        myCell.InnerHtml = str;
+                    }
+                }
+                else
+                {
+                    myCell.Attributes["class"] = "qmcBit qmcBitY";
+                    myCell.Attributes["title"] = i.ToString();
+                    myCell.onmousedown = function (event)
+                    {
+                        myCellMouseDown(event);
+                    };
+                    if (data.Funcdata[i] == 0)
+                    {
+                        myCell.InnerHtml = "0";
+                    }
+                    if (data.Funcdata[i] == 1)
+                    {
+                        myCell.InnerHtml = "1";
+                    }
+                    if (data.Funcdata[i] == 2)
+                    {
+                        myCell.InnerHtml = "&times;";
+                    }
+                }
+                myRow.Controls.Add(myCell);
+            }
+            myTable.Controls.Add(myRow);
+        }
+        myTruthTableDiv.Controls.Add(myTable);
+        myInnerDiv.Controls.Add(myTruthTableDiv);
+        for (var i = 0; i < data.ImplicantGroups.Length; i++)
+        {
+            var myImplicantDiv = new HtmlGenericControl("div");
+            myImplicantDiv.InnerHtml = "<div>" + labels[2] + " (" + labels[3] + " " + i + "):</div>";
+            myImplicantDiv.Attributes["class"] = "qmcTableLabelDiv";
+            DrawImplicantGroup(data.ImplicantGroups[i], myImplicantDiv, false, 0, false);
+            myInnerDiv.Controls.Add(myImplicantDiv);
+        }
+        for (var i = 0; i < data.PrimTermTables.Length; i++)
+        {
+            var resultDiv = new HtmlGenericControl("div");
+            if (i == 0)
+            {
+                resultDiv.InnerHtml = "<p>" + labels[4] + ":</p";
+            }
+            else
+            {
+                resultDiv.InnerHtml = "<p> " + labels[5] + " " + (i - 1) + "):</p>";
+            }
+            resultDiv.Attributes["class"] = "qmcTableResultDiv";
+            var drawPetrickVars = false;
+            if (data.PetrickTermPrims.Length > 0 && i == data.PrimTermTables.Length - 1)
+            {
+                drawPetrickVars = true;
+            }
+            DrawImplicantGroup(data.PrimTerms, resultDiv, true, i, drawPetrickVars);
+            var essPTermsDiv = new HtmlGenericControl("div");
+            var essPTermsStr = "";
+            var primTermTable = data.PrimTermTables[i];
+            var jj = primTermTable.EssentialPrimTerms.Length;
+            for (var j = 0; j < jj; j++)
+            {
+                essPTermsStr += primTermTable.EssentialPrimTerms[j].ColoredTermString;
+                if (j != (jj - 1)) essPTermsStr += ", ";
+            }
+            if (jj > 0)
+            {
+                essPTermsDiv.InnerHtml = "<p>" + labels[6] + ": <span class='qmcMathFont'>" + essPTermsStr + "</span></p>";
+                essPTermsDiv.Attributes["class"] = "qmcIndent";
+                resultDiv.Controls.Add(essPTermsDiv);
+            }
+            myInnerDiv.Controls.Add(resultDiv);
+        }
+        if (data.PetrickTermPrims.Length > 0)
+        {
+            var petrickDiv = new HtmlGenericControl("div");
+            petrickDiv.InnerHtml = "<p> " + labels[8] + " </p>";
+            var petrickInnerDiv = new HtmlGenericControl("div");
+            petrickInnerDiv.InnerHtml = "<span class='qmcMathFont'>" + data.PetrickSolver.Log + "</span>";
+            petrickInnerDiv.Attributes["class"] = "qmcIndent";
+            petrickDiv.Controls.Add(petrickInnerDiv);
+            var petrickEssTermsDiv = new HtmlGenericControl("div");
+            var petrickEssTermsStr = "";
+            var jj = data.PetrickTermPrims.Length;
+            for (var j = 0; j < jj; j++)
+            {
+                petrickEssTermsStr += data.PetrickTermPrims[j].ColoredTermString;
+                if (j != (jj - 1))
+                    petrickEssTermsStr += ", ";
+            }
+            if (jj > 0)
+            {
+                petrickEssTermsDiv.InnerHtml = "<p>" + labels[7] + " (" + labels[8] + "): <span class='qmcMathFont'>" + petrickEssTermsStr + "</span></p>";
+                petrickEssTermsDiv.Attributes["class"] = "qmcIndent";
+                petrickDiv.Controls.Add(petrickEssTermsDiv);
+            }
+            myInnerDiv.Controls.Add(petrickDiv);
+        }
+        var termDiv = new HtmlGenericControl("div");
+        termDiv.InnerHtml = "<p><strong>" + labels[1] + ":</strong> </p> <p ><span class='qmcMathFont'><i>y</i>&nbsp;=&nbsp;" + data.ColoredMinimalTerm + "</span></p>";
+        myInnerDiv.Controls.Add(termDiv);
+        myDiv.Controls.Add(myInnerDiv);
+    }
+
+    private void myCellMouseDown(Event e)
+    {
+        var targ;
+        if (e.target)
+        {
+            targ = e.target;
+        }
+        else
+        {
+            if (e.srcElement)
+                targ = e.srcElement;
+        }
+        if (targ.nodeType == 3)
+        {
+            targ = targ.parentNode;
+        }
+        var i = int.Parse(targ.title);
+        data.Activated(i);
+        Update();
+    }
+}
+
+

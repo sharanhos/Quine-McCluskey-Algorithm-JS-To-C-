@@ -1,0 +1,664 @@
+using System;
+using System.Collections.Generic;
+
+public class PrimTerm
+{
+    public int implicant;
+    public string termString;
+    public int[] color;
+    public string coloredTermString;
+    public bool used;
+    public Dictionary<int, int> neededByVar;
+    public int varCount;
+
+    public PrimTerm()
+    {
+        implicant = -1;
+        termString = "";
+        color = new int[3] { 0, 0, 0 };
+        coloredTermString = "";
+        used = false;
+        neededByVar = new Dictionary<int, int>();
+        varCount = 0;
+    }
+}
+
+public class Implicant
+{
+    public Dictionary<int, int> imp;
+    public bool isPrim;
+    public bool isOnlyDontCare;
+    public int bitMask;
+
+    public Implicant()
+    {
+        imp = new Dictionary<int, int>();
+        isPrim = false;
+        isOnlyDontCare = false;
+        bitMask = 0;
+    }
+}
+
+public class ImplicantGroup
+{
+    public List<Implicant> group;
+    public int order;
+
+    public ImplicantGroup()
+    {
+        group = new List<Implicant>();
+        order = -1;
+    }
+}
+
+public class PrimTermTable
+{
+    public List<PrimTerm> essentialPrimTerms;
+    public int order;
+    public List<int> remainingVars;
+    public List<PrimTerm> remainingPrimTerms;
+    public List<PrimTerm> supersededPrimTerms;
+
+    public PrimTermTable(int ord)
+    {
+        essentialPrimTerms = new List<PrimTerm>();
+        order = ord;
+        remainingVars = new List<int>();
+        remainingPrimTerms = new List<PrimTerm>();
+        supersededPrimTerms = new List<PrimTerm>();
+    }
+}
+
+public class QuineMcCluskeyDataCtrl
+{
+    public int noOfVars;
+    public List<int> funcdata;
+    public List<PrimTerm> primTerms;
+    public List<ImplicantGroup> implicantGroups;
+    public string minimalTerm;
+    public string coloredMinimalTerm;
+    public List<PrimTerm> minimalTermPrims;
+    public List<PrimTermTable> primTermTables;
+    public PetrickMethod petrickSolver;
+    public List<PrimTerm> petrickTermPrims;
+    public bool allowDontCare;
+
+    public QuineMcCluskeyDataCtrl()
+    {
+        noOfVars = -1;
+        funcdata = new List<int>();
+        primTerms = new List<PrimTerm>();
+        implicantGroups = new List<ImplicantGroup>();
+        minimalTerm = "";
+        coloredMinimalTerm = "";
+        minimalTermPrims = new List<PrimTerm>();
+        primTermTables = new List<PrimTermTable>();
+        petrickSolver = new PetrickMethod();
+        petrickTermPrims = new List<PrimTerm>();
+        allowDontCare = false;
+    }
+
+    public void Init(int no)
+    {
+        noOfVars = no;
+        funcdata.Clear();
+        primTerms.Clear();
+        implicantGroups.Clear();
+        minimalTerm = "0";
+        coloredMinimalTerm = "0";
+        minimalTermPrims.Clear();
+        primTermTables.Clear();
+        petrickTermPrims.Clear();
+        int noOfFuncData = (int)Math.Pow(2, noOfVars);
+        for (int i = 0; i < noOfFuncData; i++)
+        {
+            funcdata.Add(0);
+        }
+    }
+
+    public void SetFuncData(int i, int val)
+    {
+        if (i < 0 || i >= funcdata.Count)
+            return;
+        funcdata[i] = val;
+    }
+
+    public void Activated(int i)
+    {
+        if (i < 0 || i >= funcdata.Count)
+            return;
+        funcdata[i] += 1;
+        if (allowDontCare)
+        {
+            if (funcdata[i] > 2) funcdata[i] = 0;
+        }
+        else
+        {
+            if (funcdata[i] > 1) funcdata[i] = 0;
+        }
+        Compute();
+    }
+
+    public void Random()
+    {
+        Random rand = new Random();
+        for (int i = 0; i < funcdata.Count; i++)
+        {
+            if (allowDontCare)
+            {
+                funcdata[i] = rand.Next(3);
+            }
+            else
+            {
+                funcdata[i] = rand.Next(2);
+            }
+        }
+        Compute();
+    }
+
+    public void Clear()
+    {
+        for (int i = 0; i < funcdata.Count; i++)
+        {
+            funcdata[i] = 0;
+        }
+        Compute();
+    }
+
+    private int BitCount(int value)
+    {
+        int counter = 0;
+        while (value > 0)
+        {
+            if ((value & 1) == 1) counter++;
+            value >>= 1;
+        }
+        return counter;
+    }
+
+    public void Compute()
+    {
+        primTerms.Clear();
+        implicantGroups.Clear();
+        minimalTerm = "0";
+        coloredMinimalTerm = "0";
+        minimalTermPrims.Clear();
+        primTermTables.Clear();
+        petrickTermPrims.Clear();
+        int counter = 0;
+        int lastIg = -1;
+        bool continueLoop = true;
+        while (continueLoop)
+        {
+            continueLoop = false;
+            ImplicantGroup ig = new ImplicantGroup();
+            if (counter == 0)
+            {
+                for (int i = 0; i < funcdata.Count; i++)
+                {
+                    if (funcdata[i] > 0)
+                    {
+                        Implicant impl = new Implicant();
+                        impl.imp[i] = i;
+                        impl.isPrim = true;
+                        ig.group.Add(impl);
+                        continueLoop = true;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < lastIg.group.Count; i++)
+                {
+                    for (int j = i + 1; j < lastIg.group.Count; j++)
+                    {
+                        Implicant imp1 = lastIg.group[i];
+                        Implicant imp2 = lastIg.group[j];
+                        if (imp1.bitMask == imp2.bitMask)
+                        {
+                            bool found = false;
+                            int xor = -1;
+                            foreach (int m in imp1.imp.Keys)
+                            {
+                                foreach (int n in imp2.imp.Keys)
+                                {
+                                    int i1 = imp1.imp[m];
+                                    int i2 = imp2.imp[n];
+                                    xor = (i1 ^ i2) & (~imp1.bitMask);
+                                    if (BitCount(xor) == 1)
+                                    {
+                                        found = true;
+                                    }
+                                    break;
+                                }
+                                break;
+                            }
+                            if (found)
+                            {
+                                imp1.isPrim = false;
+                                imp2.isPrim = false;
+                                Implicant impl = new Implicant();
+                                impl.isPrim = true;
+                                impl.bitMask = imp1.bitMask | xor;
+                                foreach (int m in imp1.imp.Keys)
+                                    impl.imp[m] = m;
+                                foreach (int n in imp2.imp.Keys)
+                                    impl.imp[n] = n;
+                                bool foundMatch = false;
+                                for (int k = 0; k < ig.group.Count; k++)
+                                {
+                                    Implicant exist = ig.group[k];
+                                    bool isTheSame = true;
+                                    foreach (int m in impl.imp.Keys)
+                                    {
+                                        bool foundKey = false;
+                                        foreach (int n in exist.imp.Keys)
+                                        {
+                                            if (m == n)
+                                            {
+                                                foundKey = true;
+                                            }
+                                        }
+                                        if (!foundKey)
+                                        {
+                                            isTheSame = false;
+                                            break;
+                                        }
+                                    }
+                                    if (isTheSame)
+                                    {
+                                        foundMatch = true;
+                                        break;
+                                    }
+                                }
+                                if (!foundMatch)
+                                {
+                                    ig.group.Add(impl);
+                                    continueLoop = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (continueLoop) implicantGroups.Add(ig);
+            lastIg = ig;
+            counter++;
+        }
+        primTerms.Clear();
+        minimalTermPrims.Clear();
+        double color = 0.0;
+        for (int i = implicantGroups.Count - 1; i >= 0; i--)
+        {
+            List<Implicant> g = implicantGroups[i].group;
+            for (int j = 0; j < g.Count; j++)
+            {
+                if (g[j].isPrim)
+                {
+                    bool containsOne = false;
+                    Dictionary<int, int> allFuncPrimTerm = g[j].imp;
+                    foreach (int kk in allFuncPrimTerm.Keys)
+                    {
+                        int k = allFuncPrimTerm[kk];
+                        if (funcdata[k] == 1)
+                        {
+                            containsOne = true;
+                        }
+                    }
+                    if (!containsOne)
+                    {
+                        g[j].isOnlyDontCare = true;
+                    }
+                    else
+                    {
+                        PrimTerm primTerm = new PrimTerm();
+                        primTerm.implicant = j;
+                        foreach (int thisVal in primTerm.implicant.imp.Keys)
+                        {
+                            string minTerm = "";
+                            int one = 1;
+                            int needed = (~primTerm.implicant.bitMask);
+                            int varCount = 0;
+                            for (int v = 0; v < noOfVars; v++)
+                            {
+                                if ((needed & one) == one)
+                                {
+                                    if ((thisVal & one) == one)
+                                    {
+                                        minTerm = "<i>x</i><sub><small>" + v + "</small></sub>" + minTerm;
+                                    }
+                                    else
+                                    {
+                                        minTerm = "<i>x&#772;</i><sub><small>" + v + "</small></sub>" + minTerm;
+                                    }
+                                    varCount++;
+                                }
+                                one = one << 1;
+                            }
+                            minTerm = "(" + minTerm + ")";
+                            if (primTerm.implicant.bitMask == (int)Math.Pow(2, noOfVars) - 1)
+                                minTerm = "1";
+                            primTerm.color = HsvToRgb(color, 1.0, 0.5);
+                            color += 0.22;
+                            color = color % 1.0;
+                            primTerm.termString = minTerm;
+                            primTerm.varCount = varCount;
+                            string colorStr = "rgb(" + primTerm.color[0] + "," + primTerm.color[1] + "," + primTerm.color[2] + ")";
+                            primTerm.coloredTermString = "<span style='color:" + colorStr + "'>" + minTerm + "</span>";
+                            break;
+                        }
+                        primTerms.Add(primTerm);
+                    }
+                }
+            }
+        }
+        Dictionary<int, int> remaining = new Dictionary<int, int>();
+        for (int i = 0; i < funcdata.Count; i++)
+        {
+            if (funcdata[i] == 1)
+            {
+                remaining[i] = i;
+            }
+        }
+        primTermTables.Clear();
+        int primTableLoop = 0;
+        bool primTableFound = (primTerms.Count > 0);
+        bool cyclicCoveringFound = false;
+        PrimTermTable primTermTable;
+        while (primTableFound)
+        {
+            primTableFound = false;
+            primTermTable = new PrimTermTable(primTableLoop);
+            foreach (int r in remaining.Keys)
+            {
+                primTermTable.remainingVars.Add(remaining[r]);
+            }
+            if (primTableLoop == 0)
+            {
+                for (int j = 0; j < primTerms.Count; j++)
+                {
+                    primTermTable.remainingPrimTerms.Add(primTerms[j]);
+                }
+            }
+            else
+            {
+                List<PrimTerm> prevTable = primTermTables[primTableLoop - 1].remainingPrimTerms;
+                for (int k = 0; k < prevTable.Count; k++)
+                {
+                    if (!prevTable[k].used)
+                    {
+                        bool superseded = false;
+                        Dictionary<int, int> impA = prevTable[k].implicant.imp;
+                        Dictionary<int, int> varCover = new Dictionary<int, int>();
+                        int countA = 0;
+                        foreach (int r in remaining.Keys)
+                        {
+                            int v = remaining[r];
+                            if (impA.ContainsKey(v))
+                            {
+                                varCover[v] = v;
+                                countA++;
+                            }
+                        }
+                        for (int l = 0; l < prevTable.Count && !superseded; l++)
+                        {
+                            if (!prevTable[l].used && k != l)
+                            {
+                                Dictionary<int, int> impB = prevTable[l].implicant.imp;
+                                int countB = 0;
+                                foreach (int r in varCover.Keys)
+                                {
+                                    int v = varCover[r];
+                                    if (impB.ContainsKey(v))
+                                    {
+                                        countB++;
+                                    }
+                                }
+                                if (countA == countB)
+                                {
+                                    int countBInRemaining = 0;
+                                    foreach (int r in remaining.Keys)
+                                    {
+                                        int v = remaining[r];
+                                        if (impB.ContainsKey(v))
+                                        {
+                                            countBInRemaining++;
+                                        }
+                                    }
+                                    if (countBInRemaining > countA)
+                                    {
+                                        superseded = true;
+                                    }
+                                    else
+                                    {
+                                        if (k > l)
+                                        {
+                                            superseded = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (!superseded)
+                        {
+                            primTermTable.remainingPrimTerms.Add(prevTable[k]);
+                        }
+                        else
+                        {
+                            primTermTable.supersededPrimTerms.Add(prevTable[k]);
+                        }
+                    }
+                }
+            }
+            if (primTermTable.remainingPrimTerms.Count > 0)
+            {
+                primTermTables.Add(primTermTable);
+                List<PrimTerm> currentTerms = primTermTable.remainingPrimTerms;
+                Dictionary<int, int> toBeRemoved = new Dictionary<int, int>();
+                foreach (int r in remaining.Keys)
+                {
+                    int i = remaining[r];
+                    int count = 0;
+                    int term = -1;
+                    for (int j = 0; j < currentTerms.Count && count < 2; j++)
+                    {
+                        if (i == currentTerms[j].implicant.imp.Keys)
+                        {
+                            term = j;
+                            count++;
+                        }
+                    }
+                    if (count == 1)
+                    {
+                        currentTerms[term].neededByVar[i] = primTableLoop;
+                        if (!currentTerms[term].used)
+                        {
+                            minimalTermPrims.Add(currentTerms[term]);
+                            currentTerms[term].used = true;
+                            primTermTable.essentialPrimTerms.Add(currentTerms[term]);
+                            primTableFound = true;
+                            foreach (int r in remaining.Keys)
+                            {
+                                int ii = remaining[r];
+                                if (ii == currentTerms[term].implicant.imp.Keys)
+                                {
+                                    toBeRemoved[ii] = ii;
+                                }
+                            }
+                        }
+                    }
+                }
+                Dictionary<int, int> tmpRemaining = new Dictionary<int, int>();
+                foreach (int e in remaining.Keys)
+                {
+                    int ee = remaining[e];
+                    tmpRemaining[ee] = ee;
+                    remaining.Remove(e);
+                }
+                int remainingCount = 0;
+                foreach (int r in tmpRemaining.Keys)
+                {
+                    int t = tmpRemaining[r];
+                    if (!toBeRemoved.ContainsKey(t))
+                    {
+                        remaining[t] = t;
+                        remainingCount++;
+                    }
+                }
+            }
+            if (remainingCount == 0)
+            {
+                primTableFound = false;
+            }
+            else
+            {
+                if (!primTableFound)
+                {
+                    cyclicCoveringFound = true;
+                }
+            }
+            primTableLoop++;
+        }
+        bool solutionFound = true;
+        if (cyclicCoveringFound)
+        {
+            List<List<Dictionary<int, int>>> andArray = new List<List<Dictionary<int, int>>>();
+            foreach (int r in remaining.Keys)
+            {
+                int ii = remaining[r];
+                List<Dictionary<int, int>> orArray = new List<Dictionary<int, int>>();
+                for (int k = 0; k < primTermTable.remainingPrimTerms.Count; k++)
+                {
+                    Implicant imp = primTermTable.remainingPrimTerms[k].implicant.imp;
+                    if (ii == imp.Keys)
+                    {
+                        Dictionary<int, int> monom = new Dictionary<int, int>();
+                        monom[k] = k;
+                        orArray.Add(monom);
+                    }
+                }
+                andArray.Add(orArray);
+            }
+            solutionFound = petrickSolver.Solve(andArray);
+            if (solutionFound)
+            {
+                List<Dictionary<int, int>> solutions = petrickSolver.solution[0];
+                int bestSolution = -1;
+                int bestCount = 10000000;
+                int bestVarCount = 10000000;
+                for (int i = 0; i < solutions.Count; i++)
+                {
+                    int count = 0;
+                    foreach (int j in solutions[i].Keys)
+                    {
+                        count++;
+                    }
+                    if (count <= bestCount)
+                    {
+                        bool foundBest = true;
+                        if (count == bestCount)
+                        {
+                            int bestVarCountNew = 0;
+                            foreach (int j in solutions[bestSolution].Keys)
+                            {
+                                bestVarCountNew += primTermTable.remainingPrimTerms[j].varCount;
+                            }
+                            if (bestVarCountNew >= bestVarCount)
+                                foundBest = false;
+                        }
+                        if (foundBest)
+                        {
+                            bestCount = count;
+                            bestSolution = i;
+                            bestVarCount = 0;
+                            foreach (int j in solutions[bestSolution].Keys)
+                            {
+                                bestVarCount += primTermTable.remainingPrimTerms[j].varCount;
+                            }
+                        }
+                    }
+                }
+                List<Dictionary<int, int>> best = solutions[bestSolution];
+                foreach (int b in best.Keys)
+                {
+                    PrimTerm addPrimTerm = primTermTable.remainingPrimTerms[best[b]];
+                    minimalTermPrims.Add(addPrimTerm);
+                    petrickTermPrims.Add(addPrimTerm);
+                }
+            }
+        }
+        if (solutionFound)
+        {
+            minimalTerm = "";
+            coloredMinimalTerm = "";
+            bool firstL = true;
+            for (int i = 0; i < minimalTermPrims.Count; i++)
+            {
+                if (!firstL)
+                {
+                    minimalTerm += " &or; ";
+                    coloredMinimalTerm += " &or; ";
+                }
+                minimalTerm += minimalTermPrims[i].termString;
+                coloredMinimalTerm += minimalTermPrims[i].coloredTermString;
+                firstL = false;
+            }
+            if (minimalTermPrims.Count == 0)
+            {
+                minimalTerm = "0";
+                coloredMinimalTerm = "0";
+            }
+        }
+        else
+        {
+            minimalTerm = "Error: The cyclic covering problem is too large (increase the \"maxProblemSize\" parameter)";
+            coloredMinimalTerm = "Error: The cyclic covering problem is too large (increase the \"maxProblemSize\" parameter)";
+        }
+    }
+
+    private int[] HsvToRgb(double h, double s, double v)
+    {
+        int[] rgb = new int[3];
+        int i = (int)Math.Floor(h * 6);
+        double f = h * 6 - i;
+        double p = v * (1 - s);
+        double q = v * (1 - f * s);
+        double t = v * (1 - (1 - f) * s);
+        switch (i % 6)
+        {
+            case 0:
+                rgb[0] = (int)Math.Floor(v * 255);
+                rgb[1] = (int)Math.Floor(t * 255);
+                rgb[2] = (int)Math.Floor(p * 255);
+                break;
+            case 1:
+                rgb[0] = (int)Math.Floor(q * 255);
+                rgb[1] = (int)Math.Floor(v * 255);
+                rgb[2] = (int)Math.Floor(p * 255);
+                break;
+            case 2:
+                rgb[0] = (int)Math.Floor(p * 255);
+                rgb[1] = (int)Math.Floor(v * 255);
+                rgb[2] = (int)Math.Floor(t * 255);
+                break;
+            case 3:
+                rgb[0] = (int)Math.Floor(p * 255);
+                rgb[1] = (int)Math.Floor(q * 255);
+                rgb[2] = (int)Math.Floor(v * 255);
+                break;
+            case 4:
+                rgb[0] = (int)Math.Floor(t * 255);
+                rgb[1] = (int)Math.Floor(p * 255);
+                rgb[2] = (int)Math.Floor(v * 255);
+                break;
+            case 5:
+                rgb[0] = (int)Math.Floor(v * 255);
+                rgb[1] = (int)Math.Floor(p * 255);
+                rgb[2] = (int)Math.Floor(q * 255);
+                break;
+        }
+        return rgb;
+    }
+}
+
+
